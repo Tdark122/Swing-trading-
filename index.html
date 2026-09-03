@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanline — Crypto News Scanner</title>
+<style>
+  :root {
+    --bg: #0a0d0a;
+    --panel: #10140f;
+    --line: #22281f;
+    --ink: #e6ead9;
+    --dim: #8a9280;
+    --up: #5fd39a;
+    --down: #e2645a;
+    --amber: #d9a441;
+    --mono: 'SF Mono', 'JetBrains Mono', 'Courier New', monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--mono);
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 10;
+  }
+  .brand {
+    font-size: 15px;
+    letter-spacing: 0.02em;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .brand .dot {
+    color: var(--up);
+  }
+  .brand .clock {
+    font-size: 11px;
+    color: var(--dim);
+  }
+
+  .scan-row {
+    margin-top: 14px;
+    display: flex;
+    gap: 8px;
+  }
+  #pairInput {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 16px;
+    padding: 12px 12px;
+    border-radius: 3px;
+    outline: none;
+  }
+  #pairInput:focus {
+    border-color: var(--amber);
+  }
+  #scanBtn {
+    background: var(--up);
+    color: #06210f;
+    border: none;
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 14px;
+    padding: 0 20px;
+    border-radius: 3px;
+    letter-spacing: 0.03em;
+  }
+  #scanBtn:active {
+    transform: scale(0.97);
+  }
+  #scanBtn:disabled {
+    background: var(--line);
+    color: var(--dim);
+  }
+
+  .chips {
+    margin-top: 10px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .chip {
+    font-size: 11px;
+    color: var(--dim);
+    border: 1px solid var(--line);
+    padding: 5px 9px;
+    border-radius: 20px;
+  }
+  .chip:active {
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
+  main {
+    flex: 1;
+    padding: 14px 16px 40px;
+  }
+
+  .status-line {
+    font-size: 12px;
+    color: var(--dim);
+    margin-bottom: 14px;
+    min-height: 16px;
+  }
+  .status-line.err { color: var(--down); }
+
+  .tally {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .tally-box {
+    flex: 1;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 4px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .tally-box .n {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .tally-box .l {
+    font-size: 10px;
+    color: var(--dim);
+    margin-top: 4px;
+  }
+  .tally-box.bull .n { color: var(--up); }
+  .tally-box.bear .n { color: var(--down); }
+  .tally-box.neu .n { color: var(--dim); }
+
+  .headline {
+    border-bottom: 1px solid var(--line);
+    padding: 13px 0;
+    display: flex;
+    gap: 10px;
+  }
+  .headline:last-child { border-bottom: none; }
+
+  .tag {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 6px;
+  }
+  .tag.bull { background: var(--up); }
+  .tag.bear { background: var(--down); }
+  .tag.neu { background: var(--dim); }
+
+  .h-body { flex: 1; min-width: 0; }
+  .h-title {
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--ink);
+    text-decoration: none;
+    display: block;
+  }
+  .h-title:active { color: var(--amber); }
+  .h-meta {
+    margin-top: 5px;
+    font-size: 10.5px;
+    color: var(--dim);
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .h-kw {
+    color: var(--amber);
+  }
+
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--dim);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  footer {
+    padding: 14px 16px 22px;
+    border-top: 1px solid var(--line);
+    font-size: 10.5px;
+    color: var(--dim);
+    line-height: 1.6;
+  }
+
+  ::selection { background: var(--amber); color: #000; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span>scan<span class="dot">•</span>line</span>
+    <span class="clock" id="clock">--:--:--</span>
+  </div>
+  <div class="scan-row">
+    <input id="pairInput" type="text" placeholder="BTC, ETH, SOL..." autocomplete="off" autocapitalize="characters">
+    <button id="scanBtn" onclick="runScan()">SCAN</button>
+  </div>
+  <div class="chips">
+    <span class="chip" onclick="quickScan('BTC')">BTC</span>
+    <span class="chip" onclick="quickScan('ETH')">ETH</span>
+    <span class="chip" onclick="quickScan('SOL')">SOL</span>
+    <span class="chip" onclick="quickScan('XRP')">XRP</span>
+    <span class="chip" onclick="quickScan('DOGE')">DOGE</span>
+  </div>
+</header>
+
+<main>
+  <div class="status-line" id="status">Type a pair and hit scan. Pulls live headlines from major crypto news feeds.</div>
+
+  <div id="tallyWrap" style="display:none">
+    <div class="tally">
+      <div class="tally-box bull"><div class="n" id="bullCount">0</div><div class="l">bullish flag</div></div>
+      <div class="tally-box bear"><div class="n" id="bearCount">0</div><div class="l">bearish flag</div></div>
+      <div class="tally-box neu"><div class="n" id="neuCount">0</div><div class="l">neutral</div></div>
+    </div>
+  </div>
+
+  <div id="results">
+    <div class="empty">No scan run yet.<br>Results are raw headlines — you call the trade.</div>
+  </div>
+</main>
+
+<footer>
+  This is a headline aggregator, not a signal generator. Keyword flags (bullish/bearish dots) are a crude text match on the headline only — not sentiment analysis, not price data, not financial advice. Verify everything yourself before trading.
+</footer>
+
+<script>
+// ---- clock ----
+function tickClock() {
+  document.getElementById('clock').textContent = new Date().toUTCString().slice(17, 25) + ' UTC';
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+// ---- feeds (public RSS, pulled through a CORS proxy) ----
+const FEEDS = [
+  { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
+  { name: 'Cointelegraph', url: 'https://cointelegraph.com/rss' },
+  { name: 'Decrypt', url: 'https://decrypt.co/feed' },
+  { name: 'Bitcoin.com', url: 'https://news.bitcoin.com/feed/' },
+  { name: 'The Block', url: 'https://www.theblock.co/rss.xml' }
+];
+
+// Public CORS proxy — no key required. If this proxy is down, swap the
+// PROXY value for another (e.g. corsproxy.io/?url=) or point it at your
+// own tiny proxy. Kept in one place so it's a one-line fix.
+const PROXY = 'https://api.allorigins.win/raw?url=';
+
+// ---- keyword bias map (crude — headline text match only) ----
+const BULL_WORDS = [
+  'surge','rally','soar','jump','breakout','bullish','all-time high','ath',
+  'approval','approved','etf inflow','inflows','accumulate','accumulation',
+  'partnership','upgrade','adoption','buy the dip','short squeeze',
+  'record high','pump','outperform','institutional buying','halving'
+];
+const BEAR_WORDS = [
+  'crash','plunge','dump','sell-off','selloff','bearish','collapse',
+  'hack','hacked','exploit','rug pull','lawsuit','sec charges','ban','banned',
+  'liquidation','liquidated','outflow','outflows','delist','delisted',
+  'investigation','fraud','bankrupt','bankruptcy','fear','downgrade','fine'
+];
+
+const COIN_ALIASES = {
+  BTC: ['btc','bitcoin'],
+  ETH: ['eth','ethereum','ether'],
+  SOL: ['sol','solana'],
+  XRP: ['xrp','ripple'],
+  DOGE: ['doge','dogecoin'],
+  BNB: ['bnb','binance coin'],
+  ADA: ['ada','cardano'],
+  AVAX: ['avax','avalanche'],
+  LINK: ['link','chainlink'],
+  DOT: ['dot','polkadot'],
+  MATIC: ['matic','polygon'],
+  LTC: ['ltc','litecoin'],
+  SHIB: ['shib','shiba inu'],
+  TON: ['ton','toncoin'],
+  TRX: ['trx','tron']
+};
+
+function aliasesFor(pair) {
+  const clean = pair.trim().toUpperCase().replace(/USDT$|USD$|\/.*$/, '');
+  if (COIN_ALIASES[clean]) return COIN_ALIASES[clean];
+  return [clean.toLowerCase()];
+}
+
+function classify(text) {
+  const lower = text.toLowerCase();
+  let bullHit = null, bearHit = null;
+  for (const w of BULL_WORDS) { if (lower.includes(w)) { bullHit = w; break; } }
+  for (const w of BEAR_WORDS) { if (lower.includes(w)) { bearHit = w; break; } }
+  if (bullHit && !bearHit) return { bias: 'bull', kw: bullHit };
+  if (bearHit && !bullHit) return { bias: 'bear', kw: bearHit };
+  if (bullHit && bearHit) return { bias: 'neu', kw: bullHit + ' / ' + bearHit };
+  return { bias: 'neu', kw: null };
+}
+
+function timeAgo(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function quickScan(pair) {
+  document.getElementById('pairInput').value = pair;
+  runScan();
+}
+
+let scanToken = 0;
+
+async function runScan() {
+  const input = document.getElementById('pairInput').value.trim();
+  const statusEl = document.getElementById('status');
+  const resultsEl = document.getElementById('results');
+  const btn = document.getElementById('scanBtn');
+  const tallyWrap = document.getElementById('tallyWrap');
+
+  if (!input) {
+    statusEl.textContent = 'Enter a pair first — e.g. BTC, ETH, SOL.';
+    statusEl.className = 'status-line err';
+    return;
+  }
+
+  const myToken = ++scanToken;
+  const aliases = aliasesFor(input);
+
+  btn.disabled = true;
+  btn.textContent = '...';
+  statusEl.className = 'status-line';
+  statusEl.textContent = 'Scanning ' + FEEDS.length + ' feeds for ' + input.toUpperCase() + '...';
+  resultsEl.innerHTML = '';
+  tallyWrap.style.display = 'none';
+
+  const allItems = [];
+  let feedErrors = 0;
+
+  await Promise.all(FEEDS.map(async (feed) => {
+    try {
+      const res = await fetch(PROXY + encodeURIComponent(feed.url));
+      if (!res.ok) throw new Error('bad status');
+      const text = await res.text();
+      const xml = new DOMParser().parseFromString(text, 'text/xml');
+      const items = Array.from(xml.querySelectorAll('item'));
+      items.forEach(item => {
+        const title = item.querySelector('title')?.textContent || '';
+        const link = item.querySelector('link')?.textContent || '#';
+        const pubDate = item.querySelector('pubDate')?.textContent || '';
+        allItems.push({ title, link, pubDate, source: feed.name });
+      });
+    } catch (e) {
+      feedErrors++;
+    }
+  }));
+
+  if (myToken !== scanToken) return; // a newer scan superseded this one
+
+  btn.disabled = false;
+  btn.textContent = 'SCAN';
+
+  if (allItems.length === 0) {
+    statusEl.className = 'status-line err';
+    statusEl.textContent = 'Could not reach any news feeds right now (proxy or network issue). Try again in a moment.';
+    resultsEl.innerHTML = '<div class="empty">No data. The CORS proxy this runs on may be temporarily down — try again shortly, or swap the PROXY constant in the code for an alternative.</div>';
+    return;
+  }
+
+  const matches = allItems.filter(item => {
+    const t = item.title.toLowerCase();
+    return aliases.some(a => t.includes(a));
+  });
+
+  matches.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+
+  let bull = 0, bear = 0, neu = 0;
+  const rows = matches.map(item => {
+    const c = classify(item.title);
+    if (c.bias === 'bull') bull++;
+    else if (c.bias === 'bear') bear++;
+    else neu++;
+    return { ...item, ...c };
+  });
+
+  statusEl.textContent = matches.length + ' headline' + (matches.length === 1 ? '' : 's') + ' matched "' + input.toUpperCase() + '"' +
+    (feedErrors ? ' (' + feedErrors + ' feed' + (feedErrors > 1 ? 's' : '') + ' unreachable)' : '') +
+    ' — last checked ' + new Date().toLocaleTimeString();
+
+  if (matches.length === 0) {
+    resultsEl.innerHTML = '<div class="empty">No recent headlines mention ' + input.toUpperCase() + '.<br>Doesn\'t mean nothing\'s happening — just nothing in these feeds right now.</div>';
+    return;
+  }
+
+  tallyWrap.style.display = 'block';
+  document.getElementById('bullCount').textContent = bull;
+  document.getElementById('bearCount').textContent = bear;
+  document.getElementById('neuCount').textContent = neu;
+
+  resultsEl.innerHTML = rows.map(r => `
+    <div class="headline">
+      <div class="tag ${r.bias}"></div>
+      <div class="h-body">
+        <a class="h-title" href="${r.link}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a>
+        <div class="h-meta">
+          <span>${r.source}</span>
+          <span>${timeAgo(r.pubDate)}</span>
+          ${r.kw ? `<span class="h-kw">flag: ${escapeHtml(r.kw)}</span>` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+document.getElementById('pairInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') runScan();
+});
+</script>
+
+</body>
+</html>
